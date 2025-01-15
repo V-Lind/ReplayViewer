@@ -66,6 +66,7 @@ class MediaRepository(
     )
 
     fun getMediaPlayer(): CustomMediaPlayer {
+
         return CustomMediaPlayer(
             context = application,
             frameProcessor = frameProcessor,
@@ -83,6 +84,10 @@ class MediaRepository(
 
     fun setZoomLevel(zoomLevel: Float) {
         camera?.cameraControl?.setLinearZoom(zoomLevel)
+    }
+
+    fun getFrameMemorySize(): Int? {
+        return frameProcessor.getFrameMemorySize()
     }
 
     @OptIn(ExperimentalCamera2Interop::class)
@@ -217,5 +222,7 @@ class MediaRepository(
         }
 
     }
+
+
 
 }

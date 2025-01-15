@@ -25,7 +25,8 @@ fun <T> OptionSelector(
     selectedOption: MutableState<T>,
     modifier: Modifier = Modifier,
     onSelect: (T) -> Unit = {},
-    groupingOptions: ((T) -> String)? = null
+    groupingOptions: ((T) -> String)? = null,
+    colorRules: ((T) -> Color)? = null,
 ) {
     val groupedOptions = groupingOptions?.let { options.groupBy(it) }?.toSortedMap(compareBy {
         when (it) {

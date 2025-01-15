@@ -9,8 +9,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import main.src.replayviewer.util.deleteContentsRecursively
 import main.src.replayviewer.util.deleteFile
@@ -37,8 +37,8 @@ class FrameProcessor(
         Log.d("FrameProcessor", "Initializing Frame Processor")
     }
 
-    private val bufferSize = preferences.delayLength * preferences.frameRate
-    private val mediaPlayerBufferSize = preferences.mediaPlayerClipLength * preferences.frameRate
+    private var bufferSize = preferences.delayLength * preferences.frameRate
+    private var mediaPlayerBufferSize = preferences.mediaPlayerClipLength * preferences.frameRate
 
     // Make buffer for stream frames
     private var streamBuffer = FrameStorageBuffer(bufferSize)
@@ -55,29 +55,21 @@ class FrameProcessor(
     private var isFileTransferActive = false
     private var filesToDeleteQueue = ConcurrentLinkedQueue<String>()
 
+    private var frameMemorySize: Long? = null
+
     private var scopeIO = CoroutineScope(Dispatchers.IO)
     private var scopeDefault = CoroutineScope(Dispatchers.Default)
 
     fun cycleFrames(bitmap: Bitmap, frameNumber: Int, imageOrientation: Int) {
-        // If too many frames are being processed, stop capture.
-        Log.d(
-            "FrameProcessor",
-            "${scopeDefault.coroutineContext.job.children.count()} frames are being processed"
-        )
-        val cycleStartTime = System.currentTimeMillis()
-
         scopeDefault.launch {
-            val startTime = System.currentTimeMillis()
             val rotatedBitmap = bitmap.rotate(imageOrientation.toFloat())
 
-
             val byteArray = rotatedBitmap.toJpeg()
+
+            // Get size of a single jpeg frame
+            frameMemorySize = frameMemorySize ?: byteArray.size.toLong()
+
             bitmap.recycle()
-            val endTime = System.currentTimeMillis()
-            Log.d(
-                "FrameProcessor",
-                "Rotation and conversion to JPEG took ${endTime - startTime} ms"
-            )
 
             val savedFilePath = saveToDisk(byteArray, streamBufferDirectory, "$frameNumber")
 
@@ -102,9 +94,6 @@ class FrameProcessor(
             }
 
             savedFilePath?.let { streamBuffer.addLastOrdered(frameNumber, it) }
-
-            val cycleEndTime = System.currentTimeMillis()
-            Log.d("FrameProcessor", "cycleFrames took ${cycleEndTime - cycleStartTime} ms")
         }
     }
 
@@ -162,6 +151,19 @@ class FrameProcessor(
             frameList = mediaPlayerBuffer.toList().toMutableList()
         }
 
+        val existingFiles = mediaPlayerFileDirectory.listFiles()?.map { it.absolutePath } ?: emptyList()
+
+        // Schedule files to be deleted 20 seconds from now to allow video creation to finish
+        CoroutineScope(Dispatchers.IO).launch {
+            delay(20000)
+            existingFiles.forEach { filePath ->
+                if (!frameList.contains(filePath)) {
+                    deleteFile(filePath)
+                }
+            }
+            Log.d("CustomMediaPlayer", "Finished deleting unnecessary mediaplayer files")
+        }
+
         frameList = frameList.map {
             File(it).copyTo(File(mediaPlayerFileDirectory, File(it).name), true).absolutePath
         }
@@ -171,11 +173,8 @@ class FrameProcessor(
         return frameList
     }
 
-    fun clearMediaPlayerBuffer() {
-        deleteContentsRecursively(mediaPlayerFileDirectory)
-    }
 
-    fun getMediaPlayerFrame(filePath: String): ByteArray {
+    fun getFrame(filePath: String): ByteArray {
         return loadFromDisk(filePath)
     }
 
@@ -183,15 +182,21 @@ class FrameProcessor(
 
         preferences = activeCameraConfiguration
 
+        // Clear values from previous configuration
+        bufferSize = activeCameraConfiguration.delayLength * activeCameraConfiguration.frameRate
+        mediaPlayerBufferSize = activeCameraConfiguration.mediaPlayerClipLength * activeCameraConfiguration.frameRate
+        frameMemorySize = null
+
+        // Cancel previous scopes and create new ones
         scopeIO.cancel()
         scopeDefault.cancel()
         scopeIO = CoroutineScope(Dispatchers.IO)
         scopeDefault = CoroutineScope(Dispatchers.Default)
         Log.d("FrameProcessor", "Reseting Frame Processor")
+
         // Reset buffers
         streamBuffer.reset()
         mediaPlayerBuffer.reset()
-
 
         // Reset delayed frame image
         CoroutineScope(Dispatchers.Default).launch {
@@ -206,6 +211,11 @@ class FrameProcessor(
         deleteContentsRecursively(streamBufferDirectory)
         deleteContentsRecursively(mediaPlayerFileDirectory)
         Log.d("FrameProcessor", "Frame Processor Reseted")
+    }
+
+    fun getFrameMemorySize(): Int? {
+        Log.d("FrameProcessor", "Frame memory size: $frameMemorySize")
+        return frameMemorySize?.toInt()
     }
 
 }

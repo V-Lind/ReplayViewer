@@ -3,8 +3,6 @@ package main.src.replayviewer.ui.screens
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -12,18 +10,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,22 +35,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Color.Companion.Gray
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import main.src.replayviewer.composables.MediaPlayerButton
+import main.src.replayviewer.composables.SpeedSelector
 import main.src.replayviewer.model.DelayViewerViewModel
 
 @Composable
 fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
 
     val currentFrame by viewModel.currentMediaPlayerFrame.collectAsState()
-    val mediaPlayer by remember { mutableStateOf(viewModel.getMediaPlayer()) }
+    val mediaPlayer by remember(Unit) { mutableStateOf(viewModel.getMediaPlayer()) }
     val context = LocalContext.current
     var selectedSpeed by remember { mutableDoubleStateOf(1.0) }
     var sliderPosition by remember { mutableFloatStateOf(0f) }
@@ -62,16 +57,14 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
+    var isVideoSaveButtonEnabled by remember { mutableStateOf(true) }
+
 
     DisposableEffect(Unit) {
         onDispose {
             // Pause media player
             mediaPlayer.pause()
             isPlaying = false
-
-            Log.d("MediaPlayerScreen", "Disposing MediaPlayerScreen")
-            // Delete all media player files held in buffer
-            mediaPlayer.clearMediaPlayerBuffer()
         }
     }
 
@@ -117,6 +110,57 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
         }
 
         Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+        ) {
+            Spacer(modifier = Modifier.padding(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                content = {
+                    Button(
+                        onClick = {
+                            isVideoSaveButtonEnabled = false
+                            mediaPlayer.createVideo()
+                            Toast.makeText(
+                                context,
+                                "Saving video to device gallery",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        enabled = isVideoSaveButtonEnabled,
+                        content = { Text(if (isVideoSaveButtonEnabled) "Save video" else "Video saved") }
+                    )
+                    Button(
+                        onClick = {
+                            mediaPlayer.createImage()
+                            Toast.makeText(
+                                context,
+                                "Saved current image to device gallery",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        },
+                        content = { Text("Save current image") }
+                    )
+                }
+            )
+        }
+
+
+
+        SpeedSelector(
+            selectedSpeed = selectedSpeed,
+            onSpeedSelected = { speed ->
+                selectedSpeed = speed
+                mediaPlayer.setSpeed(speed)
+            },
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 12.dp, bottom = 32.dp)
+        )
+
+        Column(
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Slider(
@@ -127,9 +171,12 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
                     Log.d("MediaPlayerScreen", "Slider position: $newPosition")
                 },
                 interactionSource = interactionSource,
-                valueRange = 0f .. (mediaPlayer.getBufferFrameCount() - 1).toFloat(),
+                valueRange = 0f..(mediaPlayer.getBufferFrameCount() - 1).toFloat(),
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
+
+            Spacer(modifier = Modifier.padding(4.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
@@ -157,62 +204,10 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
                         isPlaying = false
                     }
                 )
-                MediaPlayerButton(icon = Icons.Default.Favorite,
-                    onClick = {
-                        mediaPlayer.createVideo()
-                        Toast.makeText(context, "Saving video to device gallery", Toast.LENGTH_SHORT).show()
-                    }
-                )
             }
-        }
+            Spacer(modifier = Modifier.padding(8.dp))
 
-        SpeedSelector(
-            selectedSpeed = selectedSpeed,
-            onSpeedSelected = { speed ->
-                selectedSpeed = speed
-                mediaPlayer.setSpeed(speed)
-            },
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 12.dp, bottom = 32.dp)
-        )
-    }
-}
-
-@Composable
-fun SpeedSelector(
-    selectedSpeed: Double,
-    onSpeedSelected: (Double) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val speeds = listOf(0.2, 0.5, 0.8, 1.0, 1.5, 2.0)
-    Column(
-        modifier = modifier
-    ) {
-        speeds.forEach { speed ->
-            Text(
-                text = "${speed}x",
-                color = if (speed == selectedSpeed) Color.Red else Color.Unspecified,
-                modifier = Modifier
-                    .clickable { onSpeedSelected(speed) }
-                    .padding(8.dp)
-            )
         }
     }
 }
 
-@Composable
-fun MediaPlayerButton(icon: ImageVector, onClick: () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(Gray)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = Color.White
-        )
-    }
-}

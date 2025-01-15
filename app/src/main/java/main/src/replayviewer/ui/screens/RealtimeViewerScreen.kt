@@ -9,25 +9,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -89,44 +89,46 @@ fun RealtimeViewerScreen(viewModel: DelayViewerViewModel) {
         }
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        content = {
-            GetSetupStageContent(
-                currentSetupStage,
-                viewModel,
-                currentPreference,
-                resetSetupStage = { currentSetupStage = SetupStage.INITIAL },
-                isNextEnabled = isNextEnabled
-            )
-        }
-    )
+
 
     if (currentSetupStage == SetupStage.INITIAL) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.BottomCenter,
             content = {
-                FloatingActionButton(
+                Button(
                     onClick = {
-                        viewModel.resetMediaRepository(currentPreference)
                         changeSetupStage(1)
+//                        viewModel.resetMediaRepository(currentPreference)
                     },
-                    content = {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = "Add Preference")
-                    }
+                    modifier = Modifier.padding(16.dp),
+                    content = { Text("Create New Preference") }
                 )
             }
         )
     } else {
+        GetSetupStageContent(
+            currentSetupStage,
+            viewModel,
+            currentPreference,
+            resetSetupStage = { currentSetupStage = SetupStage.INITIAL },
+            isNextEnabled = isNextEnabled
+        )
+
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 24.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.Bottom,
             content = {
-                Button({ changeSetupStage(-1) }) { Text("Back") }
+                Button(
+                    onClick = { changeSetupStage(-1) },
+                    content = { Text("Back") }
+                )
                 if (currentSetupStage != SetupStage.CONFIRM_PREFERENCE_CREATION) {
-                    Button(onClick = { changeSetupStage(1) },
+                    Button(
+                        onClick = { changeSetupStage(1) },
                         enabled = isNextEnabled.value,
                         content = { Text("Next") }
                     )
@@ -166,7 +168,6 @@ fun GetSetupStageContent(
     var focusLevel by remember { mutableFloatStateOf(currentPreference.focusLevel) }
 
 
-
     // Frame rate options
     val frameRateOptions = cameraProperties?.fpsOptions?.map { it.toString() } ?: emptyList()
 
@@ -182,48 +183,89 @@ fun GetSetupStageContent(
 
 
     // Stream lengths
+    var availableDiskSpace by remember { mutableStateOf(viewModel.getAvailableDiskSpace()) }
     var delayLengthState by remember { mutableStateOf(currentPreference.delayLength.toString()) }
+    var memoryWarningState by remember { mutableStateOf(false) }
+
+
     var mediaPlayerClipLengthState by
     remember { mutableStateOf(currentPreference.mediaPlayerClipLength.toString()) }
+    val estimatedDiskSpaceRequired = remember { mutableLongStateOf(0) }
 
     var delayLengthErrorState by remember { mutableStateOf(false) }
     var mediaPlayerClipLengthErrorState by remember { mutableStateOf(false) }
+    var mediaPlayerBiggerThanDelayErrorState by remember { mutableStateOf(false) }
+
+    // Update estimated disk space required when delay length or media player clip length changes
+    LaunchedEffect(currentPreference.delayLength, currentPreference.mediaPlayerClipLength) {
+        availableDiskSpace = viewModel.getAvailableDiskSpace()
+        estimatedDiskSpaceRequired.longValue =
+            viewModel.getEstimatedDiskSpaceRequired(currentPreference)
+
+        mediaPlayerBiggerThanDelayErrorState =
+            currentPreference.mediaPlayerClipLength > currentPreference.delayLength
+
+        memoryWarningState =
+            availableDiskSpace < estimatedDiskSpaceRequired.longValue || estimatedDiskSpaceRequired.longValue < 0
+
+        isNextEnabled.value = !delayLengthErrorState
+                && !mediaPlayerClipLengthErrorState
+                && !memoryWarningState
+                && !mediaPlayerBiggerThanDelayErrorState
+    }
 
 
 
+    Column(
+        modifier = Modifier
+            .fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
 
-    when (currentSetupStage) {
-        SetupStage.INITIAL -> {
-            // Do nothing
-        }
+    ) {
+        Spacer(modifier = Modifier.padding(16.dp))
+        when (currentSetupStage) {
+            SetupStage.INITIAL -> {
+                // Do nothing
+            }
 
-        SetupStage.NAME_PREFERENCE -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.TopCenter,
-                content = {
-                    Column {
-                        OutlinedTextField(
-                            value = nameState,
-                            onValueChange = { nameState = it },
-                            label = { Text("Preference Name") }
-                        )
+            SetupStage.NAME_PREFERENCE -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                    contentAlignment = Alignment.TopCenter,
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            OutlinedTextField(
+                                value = nameState,
+                                onValueChange = {
+                                    nameState = it
+                                    currentPreference.name = it
+                                },
+                                label = { Text("Preference Name") }
+                            )
 
-                        OutlinedTextField(
-                            value = descriptionState,
-                            onValueChange = { descriptionState = it },
-                            label = { Text("Preference Description") }
-                        )
+                            OutlinedTextField(
+                                value = descriptionState,
+                                onValueChange = {
+                                    descriptionState = it
+                                    currentPreference.description = it
+                                },
+                                label = { Text("Preference Description") }
+                            )
+                        }
                     }
-                }
-            )
+                )
 
-        }
+            }
 
-        SetupStage.SELECT_CAMERA -> {
-            Column {
+            SetupStage.SELECT_CAMERA -> {
+
                 Text("Choose which camera to use: ")
                 OptionSelector(
                     options = cameraOptions,
@@ -235,11 +277,11 @@ fun GetSetupStageContent(
                         viewModel.resetMediaRepository(currentPreference)
                     }
                 )
-            }
-        }
 
-        SetupStage.SELECT_ZOOM_LEVEL -> {
-            Column {
+            }
+
+            SetupStage.SELECT_ZOOM_LEVEL -> {
+
                 Text("Select zoom level: ${(zoomLevel * 100).toInt()}%")
                 Slider(
                     value = zoomLevel,
@@ -281,11 +323,11 @@ fun GetSetupStageContent(
 //                        modifier = Modifier.padding(horizontal = 16.dp)
 //                    )
 //                }
-            }
-        }
 
-        SetupStage.SELECT_FRAME_RATE -> {
-            Column {
+            }
+
+            SetupStage.SELECT_FRAME_RATE -> {
+
                 Text("Select frame rate: ")
                 OptionSelector(
                     options = frameRateOptions,
@@ -296,11 +338,11 @@ fun GetSetupStageContent(
                         viewModel.resetMediaRepository(currentPreference)
                     }
                 )
-            }
-        }
 
-        SetupStage.SELECT_RESOLUTION -> {
-            Column {
+            }
+
+            SetupStage.SELECT_RESOLUTION -> {
+
                 Text("Select resolution: ${resolutionState.value.width}x${resolutionState.value.height}")
                 Button(
                     onClick = { showResolutionDialog = true },
@@ -314,6 +356,9 @@ fun GetSetupStageContent(
                         contentAlignment = Alignment.Center,
                         content = {
                             BasicAlertDialog(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background),
                                 onDismissRequest = { showResolutionDialog = false },
                                 content = {
                                     OptionSelector(
@@ -334,103 +379,128 @@ fun GetSetupStageContent(
                     )
                 }
             }
-        }
 
-        SetupStage.SELECT_STREAM_LENGTHS -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.TopCenter,
-                content = {
-                    Column {
-                        Text("Delay length: ${currentPreference.delayLength} seconds")
-                        Text("Media player clip length: ${currentPreference.mediaPlayerClipLength} seconds")
-                        Spacer(modifier = Modifier.padding(16.dp))
 
-                        OutlinedTextField(
-                            value = delayLengthState,
-                            onValueChange = {
-                                val newValue = it.toIntOrNull()
-                                delayLengthState = it
+            SetupStage.SELECT_STREAM_LENGTHS -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                    contentAlignment = Alignment.TopCenter,
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Spacer(modifier = Modifier.padding(8.dp))
+                            Column {
+                                Text("Available disk space: $availableDiskSpace MB")
+                                Text(
+                                    "Estimated disk space required for \nthese buffer values: ${
+                                        estimatedDiskSpaceRequired.longValue.takeIf { it >= 0 }  ?: "Error: Overflow"
+                                    } MB"
+                                )
+                            }
+                            Spacer(modifier = Modifier.padding(16.dp))
+                            if (memoryWarningState) {
+                                Text(
+                                    text = "Error: \nNot enough disk space available for these settings",
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            OutlinedTextField(
+                                value = delayLengthState,
+                                onValueChange = {
+                                    val newValue = it.toIntOrNull()
+                                    delayLengthState = it
 
-                                // Update preference value
-                                if (newValue != null && newValue >= 1) {
-                                    currentPreference.delayLength = newValue
-                                }
+                                    // Update preference value
+                                    if (newValue != null && newValue >= 1) {
+                                        currentPreference.delayLength = newValue
+                                    }
 
-                                // Update error state on invalid input
-                                delayLengthErrorState = newValue == null || newValue < 1
-                                isNextEnabled.value = !delayLengthErrorState && !mediaPlayerClipLengthErrorState
-                            },
-                            label = { Text("Delay Length in seconds") },
-                            isError = delayLengthErrorState,
-                            keyboardOptions = KeyboardOptions.Default.copy(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
+                                    // Update error state on invalid input
+                                    delayLengthErrorState = newValue == null || newValue < 1
+                                },
+                                label = { Text("Delay Length in seconds") },
+                                isError = delayLengthErrorState,
+                                keyboardOptions = KeyboardOptions.Default.copy(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                )
                             )
-                        )
 
-                        OutlinedTextField(
-                            value = mediaPlayerClipLengthState,
-                            onValueChange = {
-                                val newValue = it.toIntOrNull()
-                                mediaPlayerClipLengthState = it
+                            if(mediaPlayerBiggerThanDelayErrorState) {
+                                Text(
+                                    text = "Error: \nMedia player clip length cannot be bigger than delay length",
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                            OutlinedTextField(
+                                value = mediaPlayerClipLengthState,
+                                onValueChange = {
+                                    val newValue = it.toIntOrNull()
+                                    mediaPlayerClipLengthState = it
 
-                                // Update preference value
-                                if (newValue != null && newValue >= 1) {
-                                    currentPreference.mediaPlayerClipLength = newValue
-                                }
+                                    // Update preference value
+                                    if (newValue != null && newValue >= 1) {
+                                        currentPreference.mediaPlayerClipLength = newValue
+                                    }
 
-                                // Update error state on invalid input
-                                mediaPlayerClipLengthErrorState = newValue == null || newValue < 1
-                                isNextEnabled.value = !delayLengthErrorState && !mediaPlayerClipLengthErrorState
-                            },
-                            label = { Text("MediaPlayer Clip Length in seconds") },
-                            isError = mediaPlayerClipLengthErrorState,
-                            keyboardOptions = KeyboardOptions.Default.copy(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
+                                    // Update error state on invalid input
+                                    mediaPlayerClipLengthErrorState =
+                                        newValue == null || newValue < 1
+
+                                },
+                                label = { Text("MediaPlayer Clip Length in seconds") },
+                                isError = mediaPlayerClipLengthErrorState,
+                                keyboardOptions = KeyboardOptions.Default.copy(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                )
                             )
-                        )
+                        }
                     }
-                }
-            )
-        }
+                )
+            }
 
 
-        SetupStage.CONFIRM_PREFERENCE_CREATION -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.Center,
-                content = {
-                    Column {
-                        Text("Confirm settings:")
-                        Text("Camera: ${currentPreference.cameraId}")
-                        Text("Zoom level: ${currentPreference.zoomLevel}")
-                        Text("Resolution: ${currentPreference.resolution}")
-                        Text("Frame rate: ${currentPreference.frameRate}")
-                        Text("Delay length: ${currentPreference.delayLength}")
-                        Text("Media player clip length: ${currentPreference.mediaPlayerClipLength}")
-                        Spacer(modifier = Modifier.padding(16.dp))
+            SetupStage.CONFIRM_PREFERENCE_CREATION -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                    contentAlignment = Alignment.Center,
+                    content = {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                        ) {
+                            Text("Confirm settings:")
+                            Text("Camera: ${currentPreference.cameraId}")
+                            Text("Zoom level: ${(zoomLevel * 100).toInt()}%")
+                            Text("Resolution: ${currentPreference.resolution}")
+                            Text("Frame rate: ${currentPreference.frameRate} fps")
+                            Text("Delay length: ${currentPreference.delayLength} seconds")
+                            Text("Media player clip length: ${currentPreference.mediaPlayerClipLength} seconds")
+                            Spacer(modifier = Modifier.padding(16.dp))
 
-                        Button(
-                            onClick = {
-                                viewModel.createPreference(currentPreference)
-                                resetSetupStage()
-                                Toast.makeText(
-                                    context,
-                                    "Preference created",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            },
-                            content = { Text("Create Preference") }
-                        )
+                            Button(
+                                onClick = {
+                                    viewModel.createPreference(currentPreference)
+                                    resetSetupStage()
+                                    Toast.makeText(
+                                        context,
+                                        "Preference created",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                content = { Text("Create Preference") }
+                            )
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 }

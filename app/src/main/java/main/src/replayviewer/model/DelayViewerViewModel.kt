@@ -1,6 +1,8 @@
 package main.src.replayviewer.model
 
 import android.app.Application
+import android.os.Environment
+import android.os.StatFs
 import android.util.Log
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.ui.graphics.ImageBitmap
@@ -111,6 +113,28 @@ class DelayViewerViewModel(
 
     fun setCameraZoomLevel(zoomLevel: Float) {
         mediaRepository.setZoomLevel(zoomLevel)
+    }
+
+    fun getAvailableDiskSpace(): Long {
+        val stat = StatFs(Environment.getDataDirectory().path)
+        val bytesAvailable = stat.blockSizeLong * stat.availableBlocksLong
+        return bytesAvailable / (1024 * 1024)
+    }
+
+    fun getEstimatedDiskSpaceRequired(currentPreference: CameraConfiguration): Long {
+
+        val frameSize = mediaRepository.getFrameMemorySize()?.toLong() ?: 0L
+
+
+        val mediaPlayerMultiplier = currentPreference.mediaPlayerClipLength * currentPreference.frameRate
+        val streamBufferMultiplier = currentPreference.delayLength * currentPreference.frameRate
+
+        val mp4RequiredSizeEstimate: Long = currentPreference.mediaPlayerClipLength.toLong() * 6000000
+
+        val totalSize: Long = (frameSize * (mediaPlayerMultiplier + streamBufferMultiplier)) + mp4RequiredSizeEstimate
+        Log.d("DelayViewerViewModel", "Total size: $totalSize")
+
+        return totalSize / (1024 * 1024)
     }
 
     fun getAvailableCameraNames(): List<String> {
