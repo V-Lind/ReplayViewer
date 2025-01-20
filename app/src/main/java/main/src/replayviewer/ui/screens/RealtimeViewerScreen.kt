@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,7 +29,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,7 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import main.src.replayviewer.model.CameraConfiguration
+import main.src.replayviewer.model.RecordingConfiguration
 import main.src.replayviewer.model.CameraProperties
 import main.src.replayviewer.model.DelayViewerViewModel
 import main.src.replayviewer.composables.OptionSelector
@@ -58,12 +60,21 @@ enum class SetupStage {
 }
 
 @Composable
-fun RealtimeViewerScreen(viewModel: DelayViewerViewModel) {
+fun RealtimeViewerScreen(
+    viewModel: DelayViewerViewModel,
+    fromSettings: Boolean = false
+) {
     val realtimeFrame by viewModel.realtimeFrame.collectAsState()
-    val currentPreference: CameraConfiguration = viewModel.getActivePreference()
+    val currentPreference by remember { mutableStateOf(viewModel.getActivePreference(needsNewDefaults = true)) }
+
+
     val isNextEnabled = remember { mutableStateOf(true) }
 
     var currentSetupStage by remember { mutableStateOf(SetupStage.INITIAL) }
+
+    fun changeSetupStage(direction: Int) {
+        currentSetupStage = SetupStage.entries[currentSetupStage.ordinal + direction]
+    }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -71,8 +82,18 @@ fun RealtimeViewerScreen(viewModel: DelayViewerViewModel) {
         }
     }
 
-    fun changeSetupStage(direction: Int) {
-        currentSetupStage = SetupStage.entries[currentSetupStage.ordinal + direction]
+    // Automatically trigger setup if coming via settings screen
+    LaunchedEffect(fromSettings) {
+        if (fromSettings) {
+            changeSetupStage(1)
+        }
+    }
+
+    // Reset camera when starting camera setup
+    LaunchedEffect(currentSetupStage) {
+        if (currentSetupStage == SetupStage.NAME_PREFERENCE) {
+            viewModel.resetMediaRepository(currentPreference)
+        }
     }
 
 
@@ -89,8 +110,6 @@ fun RealtimeViewerScreen(viewModel: DelayViewerViewModel) {
         }
     }
 
-
-
     if (currentSetupStage == SetupStage.INITIAL) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -102,7 +121,7 @@ fun RealtimeViewerScreen(viewModel: DelayViewerViewModel) {
 //                        viewModel.resetMediaRepository(currentPreference)
                     },
                     modifier = Modifier.padding(16.dp),
-                    content = { Text("Create New Preference") }
+                    content = { Text("Create new Configuration") }
                 )
             }
         )
@@ -143,7 +162,7 @@ fun RealtimeViewerScreen(viewModel: DelayViewerViewModel) {
 fun GetSetupStageContent(
     currentSetupStage: SetupStage,
     viewModel: DelayViewerViewModel,
-    currentPreference: CameraConfiguration,
+    currentPreference: RecordingConfiguration,
     resetSetupStage: () -> Unit,
     isNextEnabled: MutableState<Boolean>
 ) {
@@ -180,10 +199,11 @@ fun GetSetupStageContent(
     val resolutionState =
         remember { mutableStateOf(resolutionStringToSize(currentPreference.resolution)) }
     var showResolutionDialog by remember { mutableStateOf(false) }
+    var showResolutionWarningDialog by remember { mutableStateOf(false) }
 
 
     // Stream lengths
-    var availableDiskSpace by remember { mutableStateOf(viewModel.getAvailableDiskSpace()) }
+    var availableDiskSpace by remember { mutableLongStateOf(viewModel.getAvailableDiskSpace()) }
     var delayLengthState by remember { mutableStateOf(currentPreference.delayLength.toString()) }
     var memoryWarningState by remember { mutableStateOf(false) }
 
@@ -258,6 +278,14 @@ fun GetSetupStageContent(
                                 },
                                 label = { Text("Preference Description") }
                             )
+//                            Spacer(modifier = Modifier.padding(16.dp))
+//                            Checkbox(
+//                                checked = currentPreference.shouldReturnToRealtimeDisplay,
+//                                onCheckedChange = {
+//                                    currentPreference.shouldReturnToRealtimeDisplay = it
+//
+//                                }
+//                            )
                         }
                     }
                 )
@@ -365,6 +393,12 @@ fun GetSetupStageContent(
                                         options = resolutionOptions,
                                         selectedOption = resolutionState,
                                         onSelect = { selection ->
+
+                                            // Trigger warning dialogue if selected resolution is high
+                                            if (selection.width * selection.height > (1920 * 1080)) {
+                                                showResolutionWarningDialog = true
+                                            }
+
                                             resolutionState.value = selection
                                             currentPreference.resolution =
                                                 "${selection.width}x${selection.height}"
@@ -376,6 +410,23 @@ fun GetSetupStageContent(
                                 }
                             )
                         }
+                    )
+                }
+                if (showResolutionWarningDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            showResolutionWarningDialog = false
+                        },
+                        title = { Text("Warning") },
+                        text = {
+                            Column {
+                                Text("Selecting high resolutions (1920x1080 or higher) may cause the application to become unstable.")
+                                Text("If this happens, select a lower resolution.")
+                            }
+                        },
+                        confirmButton = {
+                            Button({ showResolutionWarningDialog = false }) { Text("Ok") }
+                        },
                     )
                 }
             }
@@ -398,7 +449,7 @@ fun GetSetupStageContent(
                                 Text("Available disk space: $availableDiskSpace MB")
                                 Text(
                                     "Estimated disk space required for \nthese buffer values: ${
-                                        estimatedDiskSpaceRequired.longValue.takeIf { it >= 0 }  ?: "Error: Overflow"
+                                        estimatedDiskSpaceRequired.longValue.takeIf { it >= 0 } ?: "Error: Overflow"
                                     } MB"
                                 )
                             }
@@ -431,7 +482,7 @@ fun GetSetupStageContent(
                                 )
                             )
 
-                            if(mediaPlayerBiggerThanDelayErrorState) {
+                            if (mediaPlayerBiggerThanDelayErrorState) {
                                 Text(
                                     text = "Error: \nMedia player clip length cannot be bigger than delay length",
                                     color = MaterialTheme.colorScheme.error
@@ -471,12 +522,27 @@ fun GetSetupStageContent(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background),
-                    contentAlignment = Alignment.Center,
+                    contentAlignment = Alignment.TopCenter,
                     content = {
                         Column(
-                            modifier = Modifier.padding(16.dp),
+                            modifier = Modifier
+                                .padding(horizontal = 24.dp, vertical = 16.dp)
+                                .fillMaxWidth(),
+
                         ) {
+                            Spacer(modifier = Modifier.padding(24.dp))
                             Text("Confirm settings:")
+                            Text("Name: ${currentPreference.name}")
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 200.dp),
+                            ) {
+                                item {
+
+                                    Text("Description: ${currentPreference.description}")
+                                }
+                            }
                             Text("Camera: ${currentPreference.cameraId}")
                             Text("Zoom level: ${(zoomLevel * 100).toInt()}%")
                             Text("Resolution: ${currentPreference.resolution}")
@@ -495,6 +561,7 @@ fun GetSetupStageContent(
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 },
+                                modifier = Modifier.align(Alignment.CenterHorizontally),
                                 content = { Text("Create Preference") }
                             )
                         }

@@ -68,6 +68,16 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
         }
     }
 
+    // Trigger play when screen is launched
+    LaunchedEffect(Unit) {
+        selectedSpeed = viewModel.getActivePreference().mediaPlayerSpeed
+        mediaPlayer.setSpeed(selectedSpeed)
+        mediaPlayer.play()
+        isPlaying = true
+    }
+
+
+    // On slider drag interaction
     LaunchedEffect(interactionSource) {
         interactionSource.interactions.collect { interaction ->
             when (interaction) {
@@ -79,6 +89,7 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
         }
     }
 
+    // On frame update
     LaunchedEffect(currentFrame) {
         sliderPosition = mediaPlayer.getSliderPosition()
     }
@@ -153,6 +164,7 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
             selectedSpeed = selectedSpeed,
             onSpeedSelected = { speed ->
                 selectedSpeed = speed
+                viewModel.setMediaPlayerSpeed(speed)
                 mediaPlayer.setSpeed(speed)
             },
             modifier = Modifier

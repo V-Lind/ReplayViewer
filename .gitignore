@@ -3,6 +3,10 @@
 build/
 **/build/
 
+# Builds
+.aab
+.apk
+
 # Local configuration file (sdk path, etc)
 local.properties
 

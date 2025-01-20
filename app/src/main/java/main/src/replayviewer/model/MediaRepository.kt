@@ -1,10 +1,11 @@
 package main.src.replayviewer.model
 
-import android.app.Application
+import android.content.Context
 import android.hardware.camera2.CaptureRequest
 import android.util.Log
 import android.util.Range
 import android.util.Size
+import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.CaptureRequestOptions
@@ -20,14 +21,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.LifecycleOwner
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
 
 class MediaRepository(
-    private val application: Application,
-    private var preferences: CameraConfiguration,
+    private val context: Context,
+    private var preferences: RecordingConfiguration,
     private var lifecycleOwner: LifecycleOwner,
     private var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>,
     private val backCameraProperties: CameraProperties?,
@@ -49,37 +53,40 @@ class MediaRepository(
     private val _currentMediaPlayerFrame = MutableStateFlow<ImageBitmap?>(null)
     val currentMediaPlayerFrame: StateFlow<ImageBitmap?> = _currentMediaPlayerFrame.asStateFlow()
 
+    private val _isCameraRunning = MutableStateFlow(false)
+    val isCameraRunning: StateFlow<Boolean> = _isCameraRunning.asStateFlow()
 
-    private val userInRealtimeViewer: MutableState<Boolean> = mutableStateOf(false)
-    private val userInDelayViewer: MutableState<Boolean> = mutableStateOf(false)
+
+    private val shouldEmitRealTimeFrames: MutableState<Boolean> = mutableStateOf(false)
+    private val shouldEmitDelayedFrames: MutableState<Boolean> = mutableStateOf(false)
 
     private var camera: Camera? = null
 
     private val frameProcessor = FrameProcessor(
-        application,
+        context,
         preferences,
         _realtimeFrame,
         _delayedFrame,
-        userInRealtimeViewer,
-        userInDelayViewer,
+        shouldEmitRealTimeFrames,
+        shouldEmitDelayedFrames,
         _bufferState
     )
 
     fun getMediaPlayer(): CustomMediaPlayer {
 
         return CustomMediaPlayer(
-            context = application,
+            context = context,
             frameProcessor = frameProcessor,
             _currentMediaPlayerFrame = _currentMediaPlayerFrame,
         )
     }
 
-    fun toggleUserInRealtimeViewer(boolean: Boolean) {
-        userInRealtimeViewer.value = boolean
+    fun setShouldEmitRealtimeFrames(boolean: Boolean) {
+        shouldEmitRealTimeFrames.value = boolean
     }
 
-    fun toggleUserInDelayViewer(boolean: Boolean) {
-        userInDelayViewer.value = boolean
+    fun setShouldEmitDelayedFrames(boolean: Boolean) {
+        shouldEmitDelayedFrames.value = boolean
     }
 
     fun setZoomLevel(zoomLevel: Float) {
@@ -109,7 +116,10 @@ class MediaRepository(
 
             val resolutionSelector = ResolutionSelector.Builder()
                 .setResolutionStrategy(
-                    ResolutionStrategy(targetResolution, ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER)
+                    ResolutionStrategy(
+                        targetResolution,
+                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER
+                    )
                 )
                 .build()
 
@@ -127,7 +137,21 @@ class MediaRepository(
                     val bitmap = imageProxy.toBitmap()
                     imageProxy.close()
 
-                    frameProcessor.cycleFrames(bitmap, frameNumber, preferences.cameraOrientation)
+                    frameProcessor.cycleFrames(
+                        bitmap,
+                        frameNumber,
+                        preferences.cameraOrientation,
+                        onPerformanceIssue = {
+                            CoroutineScope(Dispatchers.Main).launch {
+                                stopCamera()
+                                Toast.makeText(
+                                    context,
+                                    "Camera stopped. Lower the capture resolution or fps.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    )
                     frameNumber = (frameNumber + 1) % Int.MAX_VALUE
 
                 } catch (e: Exception) {
@@ -187,19 +211,25 @@ class MediaRepository(
         } catch (e: Exception) {
             Log.e("MediaRepository", "Error setting up camera", e)
         }
+        CoroutineScope(Dispatchers.Main).launch {
+            _isCameraRunning.emit(true)
+        }
     }
 
     fun stopCamera() {
         cameraProviderFuture.get()?.unbindAll()
         camera = null
+        CoroutineScope(Dispatchers.Main).launch {
+            _isCameraRunning.emit(false)
+        }
     }
 
 
-    fun changeConfiguration(newCameraConfiguration: CameraConfiguration) {
+    fun changeConfiguration(newRecordingConfiguration: RecordingConfiguration) {
         // Change preferences used by camera & frame processor to new active preference
-        preferences = newCameraConfiguration
-        frameProcessor.restartFrameProcessor(newCameraConfiguration)
-        Log.d("MediaRepository", "Changed configuration to: $newCameraConfiguration")
+        preferences = newRecordingConfiguration
+        frameProcessor.restartFrameProcessor(newRecordingConfiguration)
+        Log.d("MediaRepository", "Changed configuration to: $newRecordingConfiguration")
     }
 
 
@@ -214,7 +244,10 @@ class MediaRepository(
         camera?.let {
             val camera2CameraControl = Camera2CameraControl.from(it.cameraControl)
             val captureRequestOptions = CaptureRequestOptions.Builder()
-                .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                .setCaptureRequestOption(
+                    CaptureRequest.CONTROL_AF_MODE,
+                    CaptureRequest.CONTROL_AF_MODE_OFF
+                )
                 .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, focusDistance)
                 .build()
             camera2CameraControl.setCaptureRequestOptions(captureRequestOptions)
@@ -223,6 +256,9 @@ class MediaRepository(
 
     }
 
-
+    fun getWhichFrameBeingEmitted(): FrameType {
+        return if (shouldEmitRealTimeFrames.value) FrameType.REALTIME else FrameType.DELAYED
+    }
 
 }
+

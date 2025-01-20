@@ -25,6 +25,9 @@ class VideoMaker(
     private var trackIndex = -1
     private var isMuxerStarted = false
     private var inputSurface: Surface? = null
+    private var frameIndex = 0
+    private var presentationTimeUs = 0L
+
 
     fun startRecording() {
         val format = MediaFormat.createVideoFormat("video/avc", width, height).apply {
@@ -42,8 +45,6 @@ class VideoMaker(
             inputSurface = createInputSurface()
             start()
         }
-
-
 
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, "DelayCapture_${System.currentTimeMillis() / 1000}")
@@ -63,9 +64,9 @@ class VideoMaker(
         isMuxerStarted = false
     }
 
-    fun stopRecording() {
+    private fun stopRecording() {
         mediaCodec?.apply {
-            signalEndOfInputStream()
+            Log.d("VideoMaker", "Stopping recording")
             stop()
             release()
         }
@@ -81,17 +82,28 @@ class VideoMaker(
         isMuxerStarted = false
     }
 
-    fun encodeFrame(byteArray: ByteArray, frameIndex: Int) {
-        val bitmap = byteArray.toBitmap()
-        val canvas = inputSurface?.lockCanvas(null)
-        canvas?.let {
-            val destRect = Rect(0, 0, it.width, it.height)
-            it.drawBitmap(bitmap, null, destRect, null)
-            inputSurface?.unlockCanvasAndPost(it)
+    private fun encodeFrame(byteArray: ByteArray?, endOfStream: Boolean = false) {
+        Log.d("VideoMaker", "Start Encoding frame")
+        if (byteArray != null) {
+            val bitmap = byteArray.toBitmap()
+            val canvas = inputSurface?.lockCanvas(null)
+            canvas?.let {
+                val destRect = Rect(0, 0, it.width, it.height)
+                it.drawBitmap(bitmap, null, destRect, null)
+                inputSurface?.unlockCanvasAndPost(it)
+            }
         }
 
         val bufferInfo = MediaCodec.BufferInfo()
-        var outputBufferIndex = mediaCodec?.dequeueOutputBuffer(bufferInfo, 10000) ?: -1
+
+        // Add end of stream flag
+        if (endOfStream) {
+            Log.d("VideoMaker", "End of stream")
+            mediaCodec?.signalEndOfInputStream()
+        }
+
+        var outputBufferIndex = mediaCodec?.dequeueOutputBuffer(bufferInfo, 1000000) ?: -1
+         Log.d("VideoMaker", "Output buffer index: $outputBufferIndex")
         while (outputBufferIndex >= 0) {
             val outputBuffer = mediaCodec?.getOutputBuffer(outputBufferIndex)
             if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
@@ -110,8 +122,12 @@ class VideoMaker(
                 }
 
                 // Calculate presentation time in microseconds
-                val presentationTimeUs = (frameIndex * 1000000L / frameRate)
+                presentationTimeUs = frameIndex * 1000000L / frameRate
+                Log.d("VideoMaker", "Frame index: $frameIndex | Presentation time: $presentationTimeUs")
+
                 bufferInfo.presentationTimeUs = presentationTimeUs
+                frameIndex++
+
 
                 mediaMuxer?.writeSampleData(trackIndex, outputBuffer!!, bufferInfo)
             }
@@ -120,4 +136,22 @@ class VideoMaker(
             outputBufferIndex = mediaCodec?.dequeueOutputBuffer(bufferInfo, 0) ?: -1
         }
     }
+
+    fun createVideo(frameList: List<String>, frameProcessor: FrameProcessor) {
+        var index = 1
+        frameList.forEach { filePath ->
+            val byteArray = frameProcessor.getFrame(filePath)
+            encodeFrame(byteArray)
+            Log.d("VideoMaker", "Frames encoded: $index")
+            index++
+        }
+        // Add an additional frame for the end flag
+        encodeFrame(null, true)
+        Log.d("VideoMaker", "All frames processed. Total frames: ${frameList.size}")
+        stopRecording()
+    }
 }
+
+
+
+

@@ -23,18 +23,23 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import main.src.replayviewer.model.CameraConfiguration
+import androidx.navigation.NavController
+import main.src.replayviewer.model.RecordingConfiguration
 import main.src.replayviewer.model.DelayViewerViewModel
 import main.src.replayviewer.util.getAspectRatio
 
 
 @Composable
-fun SettingsScreen(viewModel: DelayViewerViewModel) {
+fun SettingsScreen(
+    viewModel: DelayViewerViewModel,
+    navController: NavController
+) {
     val preferences by viewModel.preferences.collectAsState()
     val expandedStates = remember { mutableStateListOf(*Array(preferences.size) { false }) }
     val context = LocalContext.current
@@ -42,11 +47,11 @@ fun SettingsScreen(viewModel: DelayViewerViewModel) {
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        Text("Preferences", fontSize = 24.sp, modifier = Modifier.padding(24.dp))
+        Text("Recording configurations", fontSize = 24.sp, modifier = Modifier.padding(24.dp))
         LazyColumn {
             items(preferences.size) { index ->
                 PreferenceItem(
-                    cameraConfiguration = preferences[index],
+                    recordingConfiguration = preferences[index],
                     isExpanded = expandedStates[index],
                     isActive = preferences[index].isActive,
                     onExpandChange = { expandedStates[index] = it },
@@ -57,22 +62,37 @@ fun SettingsScreen(viewModel: DelayViewerViewModel) {
                 )
             }
         }
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.BottomCenter,
+            content = {
+                Button(
+                    onClick = {
+                        navController.navigate("${Screen.RealtimeViewer.route}/fromSettings") {
+                            popUpTo(Screen.Settings.route) { inclusive = true }
+                        }
+                    },
+                    modifier = Modifier.padding(16.dp),
+                    content = { Text("Create new Configuration") }
+                )
+            }
+        )
     }
 }
 
 
 @Composable
 fun PreferenceItem(
-    cameraConfiguration: CameraConfiguration,
+    recordingConfiguration: RecordingConfiguration,
     isExpanded: Boolean,
     isActive: Boolean,
     onExpandChange: (Boolean) -> Unit,
     viewModel: DelayViewerViewModel,
-    preferences: List<CameraConfiguration>,
+    preferences: List<RecordingConfiguration>,
     context: Context,
     index: Int
 ) {
-    val cameraInUse = when (cameraConfiguration.cameraId) {
+    val cameraInUse = when (recordingConfiguration.cameraId) {
         "BACK" -> "Back"
         else -> "Front"
     }
@@ -93,7 +113,7 @@ fun PreferenceItem(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = cameraConfiguration.name, modifier = Modifier.padding(start = 8.dp))
+                Text(text = recordingConfiguration.name, modifier = Modifier.padding(start = 8.dp))
                 Row {
                     Text(
                         text = if (isActive) "Active" else "Inactive",
@@ -115,14 +135,14 @@ fun PreferenceItem(
                 Text("Uses camera: $cameraInUse")
                 Column(modifier = Modifier.fillMaxSize()) {
                     Text("Description: ")
-                    Text(cameraConfiguration.description)
+                    Text(recordingConfiguration.description)
                 }
                 Spacer(modifier = Modifier.padding(8.dp))
-                Text("Frame rate: ${cameraConfiguration.frameRate} fps")
-                Text("Resolution: ${cameraConfiguration.resolution} (${getAspectRatio(cameraConfiguration.resolution)})")
-                Text("Delay Length: ${cameraConfiguration.delayLength}")
-                Text("MediaPlayer Clip Length: ${cameraConfiguration.mediaPlayerClipLength}")
-                Text("Zoom Level: ${(cameraConfiguration.zoomLevel * 100).toInt()}%")
+                Text("Frame rate: ${recordingConfiguration.frameRate} fps")
+                Text("Resolution: ${recordingConfiguration.resolution} (${getAspectRatio(recordingConfiguration.resolution)})")
+                Text("Delay Length: ${recordingConfiguration.delayLength}")
+                Text("MediaPlayer Clip Length: ${recordingConfiguration.mediaPlayerClipLength}")
+                Text("Zoom Level: ${(recordingConfiguration.zoomLevel * 100).toInt()}%")
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

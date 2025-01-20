@@ -1,29 +1,31 @@
 package main.src.replayviewer.model
 
-import android.app.Application
+import android.content.Context
 import android.os.Environment
 import android.os.StatFs
 import android.util.Log
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.flow.StateFlow
+import main.src.replayviewer.util.resolutionStringToSize
 
 
 class DelayViewerViewModel(
-    application: Application,
+    context: Context,
     lifecycleOwner: LifecycleOwner,
     cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
 ) : ViewModel() {
 
 
-    private var preferenceRepository = PreferenceRepository(application)
-    val preferences: StateFlow<List<CameraConfiguration>> = preferenceRepository.preferences
+    private var preferenceRepository = PreferenceRepository(context)
+    val preferences: StateFlow<List<RecordingConfiguration>> = preferenceRepository.preferences
 
     private val mediaRepository = MediaRepository(
-        application,
+        context,
         preferenceRepository.getActivePreference(),
         lifecycleOwner,
         cameraProviderFuture,
@@ -36,6 +38,8 @@ class DelayViewerViewModel(
     var delayedFrame: StateFlow<ImageBitmap?> = mediaRepository.delayedFrame
     val currentMediaPlayerFrame: StateFlow<ImageBitmap?> = mediaRepository.currentMediaPlayerFrame
     val bufferState: StateFlow<Pair<Int, Int>> = mediaRepository.bufferState
+    val isCameraRunning: StateFlow<Boolean> = mediaRepository.isCameraRunning
+
 
 
     fun getMediaPlayer(): CustomMediaPlayer {
@@ -51,12 +55,16 @@ class DelayViewerViewModel(
         mediaRepository.setupCamera()
     }
 
-    fun toggleUserInRealtimeViewer(boolean: Boolean) {
-        mediaRepository.toggleUserInRealtimeViewer(boolean)
+    fun setShouldEmitRealtimeFrames(boolean: Boolean) {
+        mediaRepository.setShouldEmitRealtimeFrames(boolean)
     }
 
-    fun toggleUserInDelayViewer(boolean: Boolean) {
-        mediaRepository.toggleUserInDelayViewer(boolean)
+    fun setShouldEmitDelayedFrames(boolean: Boolean) {
+        mediaRepository.setShouldEmitDelayedFrames(boolean)
+    }
+
+    fun getWhichFrameBeingEmitted(): FrameType {
+        return mediaRepository.getWhichFrameBeingEmitted()
     }
 
     fun changeActivePreference(id: Int) {
@@ -64,11 +72,11 @@ class DelayViewerViewModel(
         resetMediaRepository()
     }
 
-    fun getActivePreference(): CameraConfiguration {
-        return preferenceRepository.getActivePreference()
+    fun getActivePreference(needsNewDefaults: Boolean = false): RecordingConfiguration {
+        return preferenceRepository.getActivePreference(needsNewDefaults)
     }
 
-    fun resetMediaRepository(newConfig: CameraConfiguration? = null) {
+    fun resetMediaRepository(newConfig: RecordingConfiguration? = null) {
         // Stop camera/unbind use cases
         mediaRepository.stopCamera()
 
@@ -99,7 +107,7 @@ class DelayViewerViewModel(
         preferenceRepository.deletePreference(id)
     }
 
-    fun createPreference(cameraConfig: CameraConfiguration) {
+    fun createPreference(cameraConfig: RecordingConfiguration) {
         preferenceRepository.addPreference(cameraConfig)
         resetMediaRepository(cameraConfig)
     }
@@ -121,7 +129,7 @@ class DelayViewerViewModel(
         return bytesAvailable / (1024 * 1024)
     }
 
-    fun getEstimatedDiskSpaceRequired(currentPreference: CameraConfiguration): Long {
+    fun getEstimatedDiskSpaceRequired(currentPreference: RecordingConfiguration): Long {
 
         val frameSize = mediaRepository.getFrameMemorySize()?.toLong() ?: 0L
 
@@ -145,6 +153,9 @@ class DelayViewerViewModel(
         mediaRepository.setCameraFocusLevel(focusLevel)
     }
 
+    fun setMediaPlayerSpeed(speed: Double) {
+        preferenceRepository.setMediaPlayerSpeed(speed)
+    }
 
 }
 

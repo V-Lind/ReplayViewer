@@ -1,6 +1,5 @@
 package main.src.replayviewer
 
-import android.app.Application
 import android.util.Log
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.compose.foundation.layout.PaddingValues
@@ -49,7 +48,7 @@ fun ReplayViewerApp(widthSizeClass: WindowWidthSizeClass) {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 if (modelClass.isAssignableFrom(DelayViewerViewModel::class.java)) {
                     @Suppress("UNCHECKED_CAST")
-                    return DelayViewerViewModel(context.applicationContext as Application, lifecycleOwner, cameraProviderFuture) as T
+                    return DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture) as T
                 }
                 throw IllegalArgumentException("Unknown ViewModel class")
             }
@@ -76,9 +75,13 @@ fun ReplayViewerApp(widthSizeClass: WindowWidthSizeClass) {
     }
 
     navController.addOnDestinationChangedListener { _, destination, _ ->
+
         with(viewModel) {
-            toggleUserInRealtimeViewer(destination.route == Screen.RealtimeViewer.route)
-            toggleUserInDelayViewer(destination.route == Screen.DelayViewer.route)
+            setShouldEmitRealtimeFrames(
+                destination.route == "${Screen.RealtimeViewer.route}/{fromSettings}"
+                        || destination.route == Screen.RealtimeViewer.route
+            )
+            setShouldEmitDelayedFrames(destination.route == Screen.DelayViewer.route)
         }
     }
 
@@ -123,9 +126,17 @@ private fun CreateContent(
         builder = {
             composable(Screen.MainMenu.route) { MainMenuScreen(navController, viewModel) }
             composable(Screen.RealtimeViewer.route) { RealtimeViewerScreen(viewModel) }
+
+            // Passes the argument to trigger config creation when coming via settings
+            composable("${Screen.RealtimeViewer.route}/{fromSettings}") { backStackEntry ->
+                RealtimeViewerScreen(
+                    viewModel = viewModel,
+                    fromSettings = backStackEntry.arguments?.getString("fromSettings") == "fromSettings"
+                )
+            }
             composable(Screen.DelayViewer.route) { DelayViewerScreen(viewModel, navController) }
             composable(Screen.MediaPlayer.route) { MediaPlayerScreen(viewModel) }
-            composable(Screen.Settings.route) { SettingsScreen(viewModel) }
+            composable(Screen.Settings.route) { SettingsScreen(viewModel, navController) }
         }
     )
 }

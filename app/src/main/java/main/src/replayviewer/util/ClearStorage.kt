@@ -9,6 +9,4 @@ fun clearStorage(context: Context) {
     File(context.filesDir, "mediaPlayerFrames").deleteRecursively()
     File(context.filesDir, "streamFrames").deleteRecursively()
 
-
-    Toast.makeText(context, "Storage cleared", Toast.LENGTH_SHORT).show()
 }

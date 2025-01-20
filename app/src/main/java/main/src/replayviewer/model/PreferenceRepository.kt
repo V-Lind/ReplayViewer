@@ -9,14 +9,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import main.src.replayviewer.util.resolutionStringToSize
 import java.io.File
 
 class PreferenceRepository(private val context: Context) {
 
     private var preferencesFile = File(context.filesDir, "preferences.json")
 
-    private val _preferences = MutableStateFlow<List<CameraConfiguration>>(emptyList())
-    val preferences: StateFlow<List<CameraConfiguration>> = _preferences
+    private val _preferences = MutableStateFlow<List<RecordingConfiguration>>(emptyList())
+    val preferences: StateFlow<List<RecordingConfiguration>> = _preferences
 
     private var backCameraProperties: CameraProperties? = null
     private var frontCameraProperties: CameraProperties? = null
@@ -24,12 +25,10 @@ class PreferenceRepository(private val context: Context) {
     init {
         getCameraCapabilities(context)
         //    resetPreferences()
-
         // load preferences from disk
-        loadPreferences()?.let { savePreferences(it) } ?: run { initializeDefaultPreferences() }
+        loadPreferences()
         Log.d("PreferenceRepository", "Preferences init finished: ${preferences.value}")
     }
-
 
 
     private fun resetPreferences() {
@@ -48,8 +47,8 @@ class PreferenceRepository(private val context: Context) {
 
     private fun initializeDefaultPreferences() {
 
-        val backCameraConfiguration = backCameraProperties?.let {
-            CameraConfiguration(
+        val backRecordingConfiguration = backCameraProperties?.let {
+            RecordingConfiguration(
                 id = 1,
                 isActive = true,
                 name = "Default Back preset",
@@ -66,8 +65,8 @@ class PreferenceRepository(private val context: Context) {
             )
         }
 
-        val frontCameraConfiguration = frontCameraProperties?.let {
-            CameraConfiguration(
+        val frontRecordingConfiguration = frontCameraProperties?.let {
+            RecordingConfiguration(
                 id = 2,
                 isActive = false,
                 name = "Default Front preset",
@@ -85,17 +84,17 @@ class PreferenceRepository(private val context: Context) {
         }
 
         Log.d("PreferenceRepository", "Initializing default preferences")
-        savePreferences(listOfNotNull(backCameraConfiguration, frontCameraConfiguration))
+        savePreferences(listOfNotNull(backRecordingConfiguration, frontRecordingConfiguration))
     }
 
 
-    private fun savePreferences(cameraConfigurationList: List<CameraConfiguration>) {
-        if (cameraConfigurationList.all { it.isValid() }) {
-            _preferences.value = cameraConfigurationList
+    private fun savePreferences(recordingConfigurationList: List<RecordingConfiguration>) {
+        if (recordingConfigurationList.all { it.isValid() }) {
+            _preferences.value = recordingConfigurationList
             preferencesFile.writeText(
                 Json.encodeToString(
-                    ListSerializer(CameraConfiguration.serializer()),
-                    cameraConfigurationList
+                    ListSerializer(RecordingConfiguration.serializer()),
+                    recordingConfigurationList
                 )
             )
         } else {
@@ -104,13 +103,21 @@ class PreferenceRepository(private val context: Context) {
     }
 
 
-    private fun loadPreferences(): List<CameraConfiguration>? {
-        return if (preferencesFile.exists()) {
-            val jsonString = preferencesFile.readText()
-            Json.decodeFromString(ListSerializer(CameraConfiguration.serializer()), jsonString)
-        } else {
-            null
+    private fun loadPreferences(): List<RecordingConfiguration> {
+        var result: List<RecordingConfiguration>? = null
+
+        while(result == null) {
+            if (preferencesFile.exists()) {
+                val jsonString = preferencesFile.readText()
+                Log.d("PreferenceRepository", "Loaded preferences from disk: $jsonString")
+                result = Json.decodeFromString(ListSerializer(RecordingConfiguration.serializer()), jsonString)
+            } else {
+                initializeDefaultPreferences()
+            }
         }
+
+        savePreferences(result)
+        return result
     }
 
     fun setActivePreference(id: Int) {
@@ -121,12 +128,12 @@ class PreferenceRepository(private val context: Context) {
         }
     }
 
-    fun addPreference(cameraConfiguration: CameraConfiguration) {
+    fun addPreference(recordingConfiguration: RecordingConfiguration) {
         // Get new max id
         val newId = (preferences.value.maxOfOrNull { it.id } ?: 0) + 1
 
         updatePreferences {
-            it + cameraConfiguration.copy(id = newId)
+            it + recordingConfiguration.copy(id = newId)
         }
         // Set this as active preference
         setActivePreference(newId)
@@ -136,14 +143,54 @@ class PreferenceRepository(private val context: Context) {
         updatePreferences { it.filter { preference -> preference.id != id } }
     }
 
-    private fun updatePreferences(transform: (List<CameraConfiguration>) -> List<CameraConfiguration>) {
+    private fun updatePreferences(transform: (List<RecordingConfiguration>) -> List<RecordingConfiguration>) {
         val currentPreferences = preferences.value
         val updatedPreferences = transform(currentPreferences)
         savePreferences(updatedPreferences)
     }
 
-    fun getActivePreference(): CameraConfiguration {
-        return preferences.value.first { it.isActive }
+    fun getActivePreference(
+        needsNewDefaults: Boolean = false
+    ): RecordingConfiguration {
+        var preferenceToReturn: RecordingConfiguration? = null
+
+        val currentActivePreference = preferences.value.first { it.isActive }
+
+
+
+        if (needsNewDefaults) {
+            Log.d("PreferenceRepository", "Getting new defaults")
+            val currentResolution = resolutionStringToSize(currentActivePreference.resolution)
+
+            var newFrameRate = currentActivePreference.frameRate
+            var newResolution = currentActivePreference.resolution
+
+            val needsNewFrameRate = currentActivePreference.frameRate > 30
+            val needsNewResolution = currentResolution.width * currentResolution.height >= 1920 * 1080
+
+
+            val cameraToUse = when(currentActivePreference.cameraId) {
+                "BACK" -> backCameraProperties!!
+                else -> frontCameraProperties!!
+            }
+
+
+            if(needsNewFrameRate) {
+                newFrameRate = getDefaultFrameRate(cameraToUse.fpsOptions)
+            }
+
+            if(needsNewResolution) {
+                newResolution = getDefaultResolution(cameraToUse.resolutionOptions)
+            }
+
+            preferenceToReturn = currentActivePreference.copy(
+                frameRate = if(needsNewFrameRate) newFrameRate else currentActivePreference.frameRate,
+                resolution = if(needsNewResolution) newResolution else currentActivePreference.resolution
+            )
+
+        }
+        Log.d("PreferenceRepository", "Returning preference: $preferenceToReturn")
+        return preferenceToReturn ?: currentActivePreference
     }
 
     private fun getDefaultFrameRate(fpsOptions: List<Int>): Int {
@@ -171,12 +218,21 @@ class PreferenceRepository(private val context: Context) {
             for (cameraId in cameraManager.cameraIdList) {
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId)
                 val lensFacing = characteristics.get(CameraCharacteristics.LENS_FACING)
-                val maxFocalLength = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.maxOrNull()
-                Log.d("CameraCapabilities", "Camera ${characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.toList()}")
+                val maxFocalLength =
+                    characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                        ?.maxOrNull()
+                Log.d(
+                    "CameraCapabilities",
+                    "Camera ${
+                        characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                            ?.toList()
+                    }"
+                )
 
-                val fpsRanges: List<Int>? = characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
-                    ?.filter { range -> range.upper == range.lower }
-                    ?.map { range -> range.upper }
+                val fpsRanges: List<Int>? =
+                    characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                        ?.filter { range -> range.upper == range.lower }
+                        ?.map { range -> range.upper }
 
 
                 Log.d("CameraCapabilities", "FPS ranges: $fpsRanges")
@@ -213,8 +269,15 @@ class PreferenceRepository(private val context: Context) {
             frontCameraProperties?.let { "FRONT" }
         )
     }
-}
 
+    fun setMediaPlayerSpeed(speed: Double) {
+        updatePreferences { preferences ->
+            preferences.map { preference ->
+                if (preference.isActive) preference.copy(mediaPlayerSpeed = speed) else preference
+            }
+        }
+    }
+}
 
 data class CameraProperties(
     val cameraId: String,

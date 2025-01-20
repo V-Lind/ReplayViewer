@@ -25,11 +25,11 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 class FrameProcessor(
     context: Context,
-    private var preferences: CameraConfiguration,
+    private var preferences: RecordingConfiguration,
     private val _realtimeFrameEmitter: MutableStateFlow<ImageBitmap?>,
     private val _delayedFrameEmitter: MutableStateFlow<ImageBitmap?>,
-    private val userInRealtimeViewer: MutableState<Boolean>,
-    private val userInDelayViewer: MutableState<Boolean>,
+    private val shouldEmitRealTimeFrames: MutableState<Boolean>,
+    private val shouldEmitDelayedFrames: MutableState<Boolean>,
     private val _bufferState: MutableStateFlow<Pair<Int, Int>>
 
 ) {
@@ -38,14 +38,13 @@ class FrameProcessor(
     }
 
     private var bufferSize = preferences.delayLength * preferences.frameRate
-    private var mediaPlayerBufferSize = preferences.mediaPlayerClipLength * preferences.frameRate
+    private var mediaPlayerBufferSize = (preferences.mediaPlayerClipLength * preferences.frameRate)
 
     // Make buffer for stream frames
     private var streamBuffer = FrameStorageBuffer(bufferSize)
 
     // Directory where this buffer saves its frames
     private val streamBufferDirectory = makeDirectory("streamFrames", context)
-
 
     // Make buffer for media player frames
     private var mediaPlayerBuffer = FrameStorageBuffer(mediaPlayerBufferSize)
@@ -60,7 +59,13 @@ class FrameProcessor(
     private var scopeIO = CoroutineScope(Dispatchers.IO)
     private var scopeDefault = CoroutineScope(Dispatchers.Default)
 
-    fun cycleFrames(bitmap: Bitmap, frameNumber: Int, imageOrientation: Int) {
+    fun cycleFrames(
+        bitmap: Bitmap,
+        frameNumber: Int,
+        imageOrientation: Int,
+        onPerformanceIssue: () -> Unit
+    ) {
+        val startTime = System.currentTimeMillis()
         scopeDefault.launch {
             val rotatedBitmap = bitmap.rotate(imageOrientation.toFloat())
 
@@ -76,7 +81,7 @@ class FrameProcessor(
             scopeIO.launch {
                 if (streamBuffer.isBufferFull()) {
                     val filePath = streamBuffer.removeFirst()
-                    if (userInDelayViewer.value) {
+                    if (shouldEmitDelayedFrames.value) {
                         handleDelayedFrameEmission(filePath)
                     }
                     if (mediaPlayerBuffer.isBufferFull()) {
@@ -85,24 +90,33 @@ class FrameProcessor(
                     }
                     mediaPlayerBuffer.addLast(filePath)
                 } else {
-                    _bufferState.emit(Pair(streamBuffer.getFrameCount(), bufferSize))
+                    _bufferState.emit(Pair(streamBuffer.getFrameCount() + 1, bufferSize))
                 }
             }
 
-            if (userInRealtimeViewer.value) {
+            if (shouldEmitRealTimeFrames.value) {
                 handleRealtimeFrameEmission(rotatedBitmap)
             }
 
             savedFilePath?.let { streamBuffer.addLastOrdered(frameNumber, it) }
+
+            // Abort camera recording if frame processing is catastrophically slow(app would be unresponsive)
+            // User needs to lower resolution/framerate
+            val endTime = System.currentTimeMillis()
+            if (endTime - startTime > 800) {
+                onPerformanceIssue()
+            }
         }
     }
 
     private fun handleDelayedFrameEmission(filePath: String) {
+        Log.d("FrameProcessor", "Emitting delayed frame")
         val delayedFrame = loadFromDisk(filePath)
         emitDelayedFrame(delayedFrame)
     }
 
     private fun handleRealtimeFrameEmission(rotatedBitmap: Bitmap) {
+        Log.d("FrameProcessor", "Emitting realtime frame")
         scopeIO.launch {
             _realtimeFrameEmitter.emit(rotatedBitmap.asImageBitmap())
         }
@@ -148,7 +162,7 @@ class FrameProcessor(
         var frameList: List<String>
         synchronized(mediaPlayerBuffer) {
             isFileTransferActive = true
-            frameList = mediaPlayerBuffer.toList().toMutableList()
+            frameList = mediaPlayerBuffer.toList().take(mediaPlayerBufferSize).toMutableList()
         }
 
         val existingFiles = mediaPlayerFileDirectory.listFiles()?.map { it.absolutePath } ?: emptyList()
@@ -178,13 +192,13 @@ class FrameProcessor(
         return loadFromDisk(filePath)
     }
 
-    fun restartFrameProcessor(activeCameraConfiguration: CameraConfiguration) {
+    fun restartFrameProcessor(activeRecordingConfiguration: RecordingConfiguration) {
 
-        preferences = activeCameraConfiguration
+        preferences = activeRecordingConfiguration
 
         // Clear values from previous configuration
-        bufferSize = activeCameraConfiguration.delayLength * activeCameraConfiguration.frameRate
-        mediaPlayerBufferSize = activeCameraConfiguration.mediaPlayerClipLength * activeCameraConfiguration.frameRate
+        bufferSize = activeRecordingConfiguration.delayLength * activeRecordingConfiguration.frameRate
+        mediaPlayerBufferSize = (activeRecordingConfiguration.mediaPlayerClipLength * activeRecordingConfiguration.frameRate)
         frameMemorySize = null
 
         // Cancel previous scopes and create new ones
@@ -204,8 +218,8 @@ class FrameProcessor(
         }
 
         // Set new bufferSizes according to active preference
-        streamBuffer.reconfigure(bufferSize = activeCameraConfiguration.delayLength * activeCameraConfiguration.frameRate)
-        mediaPlayerBuffer.reconfigure(bufferSize = activeCameraConfiguration.mediaPlayerClipLength * activeCameraConfiguration.frameRate)
+        streamBuffer.reconfigure(bufferSize = activeRecordingConfiguration.delayLength * activeRecordingConfiguration.frameRate)
+        mediaPlayerBuffer.reconfigure(bufferSize = activeRecordingConfiguration.mediaPlayerClipLength * activeRecordingConfiguration.frameRate)
 
         // Clear any remaining files from previous setup
         deleteContentsRecursively(streamBufferDirectory)

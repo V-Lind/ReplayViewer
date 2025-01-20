@@ -6,7 +6,6 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,10 +26,8 @@ class CustomMediaPlayer(
     private var frameIndex = 0
     private var playerJob: Job? = null
     private var videoFrameRate = 30
-    private var videoMaker: VideoMaker? = null
     private val bufferFrameCount = frameProcessor.getMediaPlayerFrameCount()
     private val mediaPlayerFrameList: List<String> = frameProcessor.getMediaPlayerFiles()
-    private var videoCreationJob: Job? = null
 
     private var imgWidth = 0
     private var imgHeight = 0
@@ -38,29 +35,17 @@ class CustomMediaPlayer(
 
     init {
         loadFrame(frameIndex)
-        mediaPlayerFrameList.forEach {
-            Log.d("CustomMediaPlayer", it)
-        }
-        CoroutineScope(Dispatchers.IO).launch {
-            delay(5000)
-            mediaPlayerFrameList.forEach {
-                Log.d("CustomMediaPlayer", it)
-            }
-        }
     }
 
 
     fun play() {
         if (isPlaying) return
-        Log.d("CustomMediaPlayer", "$bufferFrameCount")
-        Log.d("CustomMediaPlayer", "$mediaPlayerFrameList.size")
 
         isPlaying = true
 
         // Start updating frames on playerJob
         playerJob = CoroutineScope(Dispatchers.IO).launch {
             while (isPlaying) {
-                Log.d("CustomMediaPlayer", "Playing frame $frameIndex")
                 loadFrame(frameIndex)
                 frameIndex = (frameIndex + 1) % mediaPlayerFrameList.size
                 delay((1000 / (videoFrameRate * playbackSpeed)).toLong())
@@ -98,7 +83,6 @@ class CustomMediaPlayer(
 
             // Select path of frame matching current index
             val filePath = mediaPlayerFrameList[index]
-            Log.d("CustomMediaPlayer", "Loading frame at $filePath with index $index")
 
             // Load frame from disk
             val frameByteArray = frameProcessor.getFrame(filePath)
@@ -115,34 +99,23 @@ class CustomMediaPlayer(
     }
 
     fun createVideo() {
-        Log.d("CustomMediaPlayer", "Creating video")
-        videoCreationJob = CoroutineScope(Dispatchers.IO).launch {
-            startRecording()
+        Log.d("CustomMediaPlayer", "Creating video: ${mediaPlayerFrameList.size} frames")
 
-            mediaPlayerFrameList.forEachIndexed { index, filePath ->
-                frameProcessor.getFrame(filePath).let {
-                    videoMaker?.encodeFrame(it, index)
-                }
-            }
-            stopRecording()
+        CoroutineScope(Dispatchers.IO).launch {
+            val videoMaker = VideoMaker(
+                context = context,
+                width = imgWidth,
+                height = imgHeight,
+                bitRate = 6000000,
+                frameRate = videoFrameRate
+            )
+
+            videoMaker.startRecording()
+            videoMaker.createVideo(mediaPlayerFrameList, frameProcessor)
         }
     }
 
-    private fun startRecording() {
-        videoMaker = VideoMaker(
-            context = context,
-            width = imgWidth,
-            height = imgHeight,
-            bitRate = 6000000,
-            frameRate = videoFrameRate
-        )
-        videoMaker?.startRecording()
-    }
 
-    private fun stopRecording() {
-        videoMaker?.stopRecording()
-        videoMaker = null
-    }
 
     fun getBufferFrameCount(): Int {
         return bufferFrameCount
@@ -167,7 +140,7 @@ class CustomMediaPlayer(
                     "ReplayViewer_img_${System.currentTimeMillis()}.jpg"
                 )
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/MyApp")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ReplayViewer")
             }
 
             val resolver = context.contentResolver
