@@ -79,6 +79,9 @@ fun RealtimeViewerScreen(
     DisposableEffect(Unit) {
         onDispose {
             currentSetupStage = SetupStage.INITIAL
+            // Rollback to current active preference if user cancels setup
+            // This is due to setup changing some values in active preference(zoom) before saving the new config
+            viewModel.resetMediaRepository(viewModel.getActivePreference())
         }
     }
 
@@ -484,7 +487,7 @@ fun GetSetupStageContent(
 
                             if (mediaPlayerBiggerThanDelayErrorState) {
                                 Text(
-                                    text = "Error: \nMedia player clip length cannot be bigger than delay length",
+                                    text = "Error: \nReplay length cannot be longer than delay length",
                                     color = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -504,7 +507,7 @@ fun GetSetupStageContent(
                                         newValue == null || newValue < 1
 
                                 },
-                                label = { Text("MediaPlayer Clip Length in seconds") },
+                                label = { Text("Replay Length in seconds") },
                                 isError = mediaPlayerClipLengthErrorState,
                                 keyboardOptions = KeyboardOptions.Default.copy(
                                     keyboardType = KeyboardType.Number,
@@ -548,7 +551,7 @@ fun GetSetupStageContent(
                             Text("Resolution: ${currentPreference.resolution}")
                             Text("Frame rate: ${currentPreference.frameRate} fps")
                             Text("Delay length: ${currentPreference.delayLength} seconds")
-                            Text("Media player clip length: ${currentPreference.mediaPlayerClipLength} seconds")
+                            Text("Replay length: ${currentPreference.mediaPlayerClipLength} seconds")
                             Spacer(modifier = Modifier.padding(16.dp))
 
                             Button(
@@ -557,12 +560,11 @@ fun GetSetupStageContent(
                                     resetSetupStage()
                                     Toast.makeText(
                                         context,
-                                        "Preference created",
+                                        "Configuration saved",
                                         Toast.LENGTH_SHORT
                                     ).show()
                                 },
-                                modifier = Modifier.align(Alignment.CenterHorizontally),
-                                content = { Text("Create Preference") }
+                                content = { Text("Create Configuration") }
                             )
                         }
                     }

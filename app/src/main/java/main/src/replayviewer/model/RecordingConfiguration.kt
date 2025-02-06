@@ -17,7 +17,9 @@ data class RecordingConfiguration(
     var frameRate: Int,
     var resolution: String,
     var cameraOrientation: Int,
-    var mediaPlayerSpeed: Double = 1.0
+    var mediaPlayerSpeed: Double = 1.0,
+    var automaticallyMakeVideoOnOpenMediaPlayer: Boolean = false,
+    var automaticallySwitchToRealTimeStream: Boolean = false,
 ) {
 
 

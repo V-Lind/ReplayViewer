@@ -5,13 +5,11 @@ import android.os.Environment
 import android.os.StatFs
 import android.util.Log
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.flow.StateFlow
-import main.src.replayviewer.util.resolutionStringToSize
 
 
 class DelayViewerViewModel(
@@ -39,7 +37,6 @@ class DelayViewerViewModel(
     val currentMediaPlayerFrame: StateFlow<ImageBitmap?> = mediaRepository.currentMediaPlayerFrame
     val bufferState: StateFlow<Pair<Int, Int>> = mediaRepository.bufferState
     val isCameraRunning: StateFlow<Boolean> = mediaRepository.isCameraRunning
-
 
 
     fun getMediaPlayer(): CustomMediaPlayer {
@@ -82,7 +79,6 @@ class DelayViewerViewModel(
 
 
         Log.d("DelayViewerViewModel", "Resetting view model with new config: $newConfig")
-        // Reinitialize mediaRepository with new active preference to clear all data
         newConfig?.let {
             mediaRepository.changeConfiguration(it)
         } ?: run {
@@ -119,8 +115,14 @@ class DelayViewerViewModel(
         }
     }
 
-    fun setCameraZoomLevel(zoomLevel: Float) {
+    fun setCameraZoomLevel(
+        zoomLevel: Float,
+        updatePreference: Boolean = false
+    ) {
         mediaRepository.setZoomLevel(zoomLevel)
+        if (updatePreference) {
+            preferenceRepository.updateZoomLevel(zoomLevel)
+        }
     }
 
     fun getAvailableDiskSpace(): Long {
@@ -134,12 +136,15 @@ class DelayViewerViewModel(
         val frameSize = mediaRepository.getFrameMemorySize()?.toLong() ?: 0L
 
 
-        val mediaPlayerMultiplier = currentPreference.mediaPlayerClipLength * currentPreference.frameRate
+        val mediaPlayerMultiplier =
+            currentPreference.mediaPlayerClipLength * currentPreference.frameRate
         val streamBufferMultiplier = currentPreference.delayLength * currentPreference.frameRate
 
-        val mp4RequiredSizeEstimate: Long = currentPreference.mediaPlayerClipLength.toLong() * 6000000
+        val mp4RequiredSizeEstimate: Long =
+            currentPreference.mediaPlayerClipLength.toLong() * 6000000
 
-        val totalSize: Long = (frameSize * (mediaPlayerMultiplier + streamBufferMultiplier)) + mp4RequiredSizeEstimate
+        val totalSize: Long =
+            (frameSize * (mediaPlayerMultiplier + streamBufferMultiplier)) + mp4RequiredSizeEstimate
         Log.d("DelayViewerViewModel", "Total size: $totalSize")
 
         return totalSize / (1024 * 1024)
@@ -155,6 +160,17 @@ class DelayViewerViewModel(
 
     fun setMediaPlayerSpeed(speed: Double) {
         preferenceRepository.setMediaPlayerSpeed(speed)
+    }
+
+    fun setActivePreferenceLengths(
+        delayLength: Int,
+        mediaPlayerClipLength: Int
+    ) {
+        preferenceRepository.setActivePreferenceLengths(delayLength, mediaPlayerClipLength)
+    }
+
+    fun updateActivePreference(newPreference: RecordingConfiguration) {
+        preferenceRepository.updateActivePreference(newPreference)
     }
 
 }

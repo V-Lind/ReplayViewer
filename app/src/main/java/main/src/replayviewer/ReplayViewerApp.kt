@@ -42,18 +42,20 @@ fun ReplayViewerApp(widthSizeClass: WindowWidthSizeClass) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
-    val viewModel: DelayViewerViewModel = viewModel(
-        key = "DelayViewerViewModel",
-        factory = object : ViewModelProvider.Factory {
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                if (modelClass.isAssignableFrom(DelayViewerViewModel::class.java)) {
-                    @Suppress("UNCHECKED_CAST")
-                    return DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture) as T
-                }
-                throw IllegalArgumentException("Unknown ViewModel class")
-            }
-        }
-    )
+//    val viewModel: DelayViewerViewModel = viewModel(
+//        key = "DelayViewerViewModel",
+//        factory = object : ViewModelProvider.Factory {
+//            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+//                if (modelClass.isAssignableFrom(DelayViewerViewModel::class.java)) {
+//                    @Suppress("UNCHECKED_CAST")
+//                    return DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture) as T
+//                }
+//                throw IllegalArgumentException("Unknown ViewModel class")
+//            }
+//        }
+//    )
+
+    val viewModel = remember { DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture) }
 
 
     // Select layout based on screen size
@@ -125,7 +127,7 @@ private fun CreateContent(
         modifier = Modifier.padding(innerPadding),
         builder = {
             composable(Screen.MainMenu.route) { MainMenuScreen(navController, viewModel) }
-            composable(Screen.RealtimeViewer.route) { RealtimeViewerScreen(viewModel) }
+//            composable(Screen.RealtimeViewer.route) { RealtimeViewerScreen(viewModel) }
 
             // Passes the argument to trigger config creation when coming via settings
             composable("${Screen.RealtimeViewer.route}/{fromSettings}") { backStackEntry ->

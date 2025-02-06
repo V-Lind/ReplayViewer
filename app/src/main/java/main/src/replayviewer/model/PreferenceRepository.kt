@@ -5,8 +5,13 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.util.Log
 import android.util.Size
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import main.src.replayviewer.util.resolutionStringToSize
@@ -22,10 +27,13 @@ class PreferenceRepository(private val context: Context) {
     private var backCameraProperties: CameraProperties? = null
     private var frontCameraProperties: CameraProperties? = null
 
+    private var updateJob: Job? = null
+
     init {
         getCameraCapabilities(context)
-        //    resetPreferences()
+        // resetPreferences()
         // load preferences from disk
+        //writeInvalidPreferencesFile()
         loadPreferences()
         Log.d("PreferenceRepository", "Preferences init finished: ${preferences.value}")
     }
@@ -88,6 +96,7 @@ class PreferenceRepository(private val context: Context) {
     }
 
 
+    // Overwrites any existing preferences in memory and on disk
     private fun savePreferences(recordingConfigurationList: List<RecordingConfiguration>) {
         if (recordingConfigurationList.all { it.isValid() }) {
             _preferences.value = recordingConfigurationList
@@ -106,11 +115,19 @@ class PreferenceRepository(private val context: Context) {
     private fun loadPreferences(): List<RecordingConfiguration> {
         var result: List<RecordingConfiguration>? = null
 
-        while(result == null) {
+        while (result == null) {
             if (preferencesFile.exists()) {
-                val jsonString = preferencesFile.readText()
-                Log.d("PreferenceRepository", "Loaded preferences from disk: $jsonString")
-                result = Json.decodeFromString(ListSerializer(RecordingConfiguration.serializer()), jsonString)
+                try {
+                    val jsonString = preferencesFile.readText()
+                    Log.d("PreferenceRepository", "Loaded preferences from disk: $jsonString")
+                    result = Json.decodeFromString(
+                        ListSerializer(RecordingConfiguration.serializer()),
+                        jsonString
+                    )
+                } catch (e: Exception) {
+                    Log.e("PreferenceRepository", "Error loading preferences from disk", e)
+                    initializeDefaultPreferences()
+                }
             } else {
                 initializeDefaultPreferences()
             }
@@ -166,30 +183,31 @@ class PreferenceRepository(private val context: Context) {
             var newResolution = currentActivePreference.resolution
 
             val needsNewFrameRate = currentActivePreference.frameRate > 30
-            val needsNewResolution = currentResolution.width * currentResolution.height >= 1920 * 1080
+            val needsNewResolution =
+                currentResolution.width * currentResolution.height >= 1920 * 1080
 
 
-            val cameraToUse = when(currentActivePreference.cameraId) {
+            val cameraToUse = when (currentActivePreference.cameraId) {
                 "BACK" -> backCameraProperties!!
                 else -> frontCameraProperties!!
             }
 
 
-            if(needsNewFrameRate) {
+            if (needsNewFrameRate) {
                 newFrameRate = getDefaultFrameRate(cameraToUse.fpsOptions)
             }
 
-            if(needsNewResolution) {
+            if (needsNewResolution) {
                 newResolution = getDefaultResolution(cameraToUse.resolutionOptions)
             }
 
             preferenceToReturn = currentActivePreference.copy(
-                frameRate = if(needsNewFrameRate) newFrameRate else currentActivePreference.frameRate,
-                resolution = if(needsNewResolution) newResolution else currentActivePreference.resolution
+                frameRate = if (needsNewFrameRate) newFrameRate else currentActivePreference.frameRate,
+                resolution = if (needsNewResolution) newResolution else currentActivePreference.resolution
             )
 
         }
-        Log.d("PreferenceRepository", "Returning preference: $preferenceToReturn")
+
         return preferenceToReturn ?: currentActivePreference
     }
 
@@ -241,7 +259,8 @@ class PreferenceRepository(private val context: Context) {
                     characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
                         ?.getOutputSizes(35)?.toList()
 
-                val cameraRotation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
+                val cameraRotation =
+                    characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION)
 
                 val cameraProperties = CameraProperties(
                     cameraId,
@@ -274,6 +293,43 @@ class PreferenceRepository(private val context: Context) {
         updatePreferences { preferences ->
             preferences.map { preference ->
                 if (preference.isActive) preference.copy(mediaPlayerSpeed = speed) else preference
+            }
+        }
+    }
+
+    fun updateZoomLevel(zoomLevel: Float) {
+        // Cancel existing job
+        updateJob?.cancel()
+
+        // Start a new job that will update preference after 0.5 seconds of inactivity
+        updateJob = CoroutineScope(Dispatchers.IO).launch {
+            delay(500) // Wait for 0.5 seconds
+            updatePreferences { preferences ->
+                preferences.map {
+                    if (it.isActive) it.copy(zoomLevel = zoomLevel) else it
+                }
+            }
+        }
+    }
+
+    fun setActivePreferenceLengths(
+        delayLength: Int,
+        mediaPlayerClipLength: Int
+    ) {
+        updatePreferences { preferences ->
+            preferences.map {
+                if (it.isActive) it.copy(
+                    delayLength = delayLength,
+                    mediaPlayerClipLength = mediaPlayerClipLength
+                ) else it
+            }
+        }
+    }
+
+    fun updateActivePreference(preference: RecordingConfiguration) {
+        updatePreferences { preferences ->
+            preferences.map {
+                if (it.id == preference.id) preference else it
             }
         }
     }
