@@ -11,8 +11,6 @@ fun deleteFile(filePath: String) {
         val file = File(filePath)
         if (file.exists()) {
             file.delete()
-        } else {
-            Log.e("deleteFile", "File not found for deletion: $filePath")
         }
     }
 }

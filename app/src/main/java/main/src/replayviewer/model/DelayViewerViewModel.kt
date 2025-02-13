@@ -18,6 +18,7 @@ class DelayViewerViewModel(
     cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
 ) : ViewModel() {
 
+    private val appContext = context
 
     private var preferenceRepository = PreferenceRepository(context)
     val preferences: StateFlow<List<RecordingConfiguration>> = preferenceRepository.preferences
@@ -135,7 +136,6 @@ class DelayViewerViewModel(
 
         val frameSize = mediaRepository.getFrameMemorySize()?.toLong() ?: 0L
 
-
         val mediaPlayerMultiplier =
             currentPreference.mediaPlayerClipLength * currentPreference.frameRate
         val streamBufferMultiplier = currentPreference.delayLength * currentPreference.frameRate
@@ -171,6 +171,11 @@ class DelayViewerViewModel(
 
     fun updateActivePreference(newPreference: RecordingConfiguration) {
         preferenceRepository.updateActivePreference(newPreference)
+    }
+
+    fun getAppContext(): Context {
+        // Returns app root composable context
+        return appContext
     }
 
 }

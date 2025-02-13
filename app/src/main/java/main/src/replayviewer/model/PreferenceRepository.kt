@@ -33,7 +33,7 @@ class PreferenceRepository(private val context: Context) {
         getCameraCapabilities(context)
         // resetPreferences()
         // load preferences from disk
-        //writeInvalidPreferencesFile()
+        // writeInvalidPreferencesFile()
         loadPreferences()
         Log.d("PreferenceRepository", "Preferences init finished: ${preferences.value}")
     }

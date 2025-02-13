@@ -42,21 +42,22 @@ fun ReplayViewerApp(widthSizeClass: WindowWidthSizeClass) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
 
-//    val viewModel: DelayViewerViewModel = viewModel(
-//        key = "DelayViewerViewModel",
-//        factory = object : ViewModelProvider.Factory {
-//            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-//                if (modelClass.isAssignableFrom(DelayViewerViewModel::class.java)) {
-//                    @Suppress("UNCHECKED_CAST")
-//                    return DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture) as T
-//                }
-//                throw IllegalArgumentException("Unknown ViewModel class")
-//            }
-//        }
-//    )
+    val viewModel: DelayViewerViewModel = viewModel(
+        key = "DelayViewerViewModel",
+        factory = object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                if (modelClass.isAssignableFrom(DelayViewerViewModel::class.java)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture) as T
+                }
+                throw IllegalArgumentException("Unknown ViewModel class")
+            }
+        }
+    )
 
-    val viewModel = remember { DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture) }
-
+//    val viewModel = remember {
+//        DelayViewerViewModel(context, lifecycleOwner, cameraProviderFuture)
+//    }
 
     // Select layout based on screen size
 //    val isCompactScreen = widthSizeClass == WindowWidthSizeClass.Compact
@@ -120,7 +121,6 @@ private fun CreateContent(
     innerPadding: PaddingValues,
     viewModel: DelayViewerViewModel,
 ) {
-
     NavHost(
         navController = navController,
         startDestination = Screen.MainMenu.route,

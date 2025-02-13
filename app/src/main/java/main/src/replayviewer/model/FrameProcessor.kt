@@ -110,13 +110,11 @@ class FrameProcessor(
     }
 
     private fun handleDelayedFrameEmission(filePath: String) {
-        Log.d("FrameProcessor", "Emitting delayed frame")
         val delayedFrame = loadFromDisk(filePath)
         emitDelayedFrame(delayedFrame)
     }
 
     private fun handleRealtimeFrameEmission(rotatedBitmap: Bitmap) {
-        Log.d("FrameProcessor", "Emitting realtime frame")
         scopeIO.launch {
             _realtimeFrameEmitter.emit(rotatedBitmap.asImageBitmap())
         }
@@ -188,8 +186,10 @@ class FrameProcessor(
     }
 
 
-    fun getFrame(filePath: String): ByteArray {
-        return loadFromDisk(filePath)
+    fun getFrame(filePath: String): ByteArray? {
+        return runCatching {
+            loadFromDisk(filePath)
+        }.getOrNull()
     }
 
     fun restartFrameProcessor(activeRecordingConfiguration: RecordingConfiguration) {

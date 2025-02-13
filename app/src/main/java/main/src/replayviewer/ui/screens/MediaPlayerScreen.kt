@@ -47,10 +47,9 @@ import main.src.replayviewer.model.DelayViewerViewModel
 @Composable
 fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
     val currentPreference by remember { mutableStateOf(viewModel.getActivePreference()) }
-    val automaticallySwitchToRealTimeStream by remember { mutableStateOf(currentPreference.automaticallySwitchToRealTimeStream) }
     val currentFrame by viewModel.currentMediaPlayerFrame.collectAsState()
-    val mediaPlayer by remember(Unit) { mutableStateOf(viewModel.getMediaPlayer()) }
-    val context = LocalContext.current
+    val mediaPlayer by remember { mutableStateOf(viewModel.getMediaPlayer()) }
+    val context by remember { mutableStateOf(viewModel.getAppContext()) }
     var selectedSpeed by remember { mutableDoubleStateOf(1.0) }
     var sliderPosition by remember { mutableFloatStateOf(0f) }
     val interactionSource = remember { MutableInteractionSource() }
@@ -67,7 +66,7 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
             mediaPlayer.pause()
             isPlaying = false
             Log.d("MediaPlayerScreen", "Disposing media player")
-            if(automaticallySwitchToRealTimeStream) {
+            if(currentPreference.automaticallySwitchToRealTimeStream) {
                 viewModel.setShouldEmitRealtimeFrames(true)
                 viewModel.setShouldEmitDelayedFrames(false)
             }
@@ -86,7 +85,6 @@ fun MediaPlayerScreen(viewModel: DelayViewerViewModel) {
             ).show()
         }
     }
-
 
 
     // Trigger play when screen is launched

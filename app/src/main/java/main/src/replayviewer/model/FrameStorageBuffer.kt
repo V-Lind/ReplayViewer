@@ -45,7 +45,6 @@ class FrameStorageBuffer(
             content?.let {
                 expectedFrameNumber.incrementAndGet()
                 synchronized(buffer) { buffer.add(content) }
-                Log.d("FrameStorageBuffer", "Added frame to buffer: $content")
             }
         }
 

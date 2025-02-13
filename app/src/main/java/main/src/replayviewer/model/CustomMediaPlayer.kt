@@ -87,21 +87,29 @@ class CustomMediaPlayer(
             // Load frame from disk
             val frameByteArray = frameProcessor.getFrame(filePath)
 
-            val bitmap = frameByteArray.toBitmap().asImageBitmap()
+            frameByteArray?.run {
+                val bitmap = frameByteArray.toBitmap().asImageBitmap()
 
-            imgWidth = bitmap.width
-            imgHeight = bitmap.height
+                imgWidth = bitmap.width
+                imgHeight = bitmap.height
 
-            // Emit frame to UI
-            _currentMediaPlayerFrame.emit(bitmap)
-
+                // Emit frame to UI
+                _currentMediaPlayerFrame.emit(bitmap)
+            }
         }
     }
 
     fun createVideo() {
         Log.d("CustomMediaPlayer", "Creating video: ${mediaPlayerFrameList.size} frames")
-
+        Log.d("CustomMediaPlayer", "context: $context, width: $imgWidth, height: $imgHeight, bitRate: 6000000, frameRate: $videoFrameRate")
         CoroutineScope(Dispatchers.IO).launch {
+            // Check if loadFrame has been finished -> config for encoding will have correct values
+            //TODO Is this necessary
+            if (imgWidth == 0 || imgHeight == 0) {
+                loadFrame(frameIndex)
+            }
+
+
             val videoMaker = VideoMaker(
                 context = context,
                 width = imgWidth,

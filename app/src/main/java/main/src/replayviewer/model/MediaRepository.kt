@@ -134,9 +134,9 @@ class MediaRepository(
             var frameNumber = 0
             imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
                 try {
+                    imageProxy.width
                     val bitmap = imageProxy.toBitmap()
                     imageProxy.close()
-
                     frameProcessor.cycleFrames(
                         bitmap,
                         frameNumber,
@@ -253,7 +253,6 @@ class MediaRepository(
             camera2CameraControl.setCaptureRequestOptions(captureRequestOptions)
             Log.d("MediaRepository", "Camera focus level set to: $focusDistance")
         }
-
     }
 
     fun getWhichFrameBeingEmitted(): FrameType {

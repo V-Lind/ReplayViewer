@@ -8,7 +8,7 @@ fun loadFromDisk(filePath: String): ByteArray {
         File(filePath).inputStream()
             .use { it.readBytes() }
     }.onFailure { error ->
-        Log.e("DiskFrameDeque", "Error loading file: $filePath", error)
+        Log.e("LoadFromDisk", "Error loading file: $filePath", error)
         throw error
     }.getOrThrow()
 
