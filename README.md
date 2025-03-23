@@ -19,6 +19,8 @@ Current todo list:
 - Add Tablet layout for UI
 - Fix remaining possible user errors
 - Rewrite project from scratch and check for possible performance improvements(Feedback appreciated if you find any)
+- Add Google payment systems
+- Upload and sell at Google Play Store.
 
 
 ## Requirements
