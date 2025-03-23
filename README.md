@@ -1,7 +1,18 @@
 # ReplayViewer - Name bound to change at some point
 
+# This app is currently in development! It is fully functional, only lacks some UI ease-of-use features and a stylish design
+
 ## Description
 This is an Android camera / delayed video stream application meant primarily for capturing your own sports moments, and then watching it on the delayed stream and possibly saving the clip as an mp4 file.
+The app involves capturing video(possibly high resolution/high speed) with device camera, then processing this video in real time(very demanding performance-vise) and allowing the user to select a delay after which they want to be shown the recorded video. The user can then save the clip and watch it in an in-app mediaplayer before choosing to properly encode it as an mp4 file.
+
+Current todo list:
+- Fix remaining bugs(Are there any?)
+- Create proper UI style
+- Add Tablet layout for UI
+- Fix remaining possible user errors
+- Rewrite project from scratch and check for possible performance improvements(Feedback appreciated if you find any)
+
 Features include:
 - Custom configurations including the ability to choose resolution, frame rate, front/back camera, delay and mediaplayer clip length.
 - Easy stream realtime/delay mode switching for quick re-centering of the device on a tripod etc.
