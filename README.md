@@ -1,6 +1,6 @@
 # ReplayViewer - Name bound to change at some point
 
-# This app is currently in development! It is fully functional, only lacks some UI ease-of-use features and a stylish design
+# This app is currently in development, but it is already fully functional!
 
 ## Description
 This is an Android camera / delayed video stream application meant primarily for capturing your own sports moments, and then watching it on the delayed stream and possibly saving the clip as an mp4 file.
